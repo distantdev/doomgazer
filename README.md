@@ -4,6 +4,8 @@ Downtuned guitar processor, version 0.1.0, from [Distant Nebula](https://distant
 
 It is a VST3, a CLAP, and a standalone app for downtuned guitar. Two paths share one contour, then grit, space, and modulation.
 
+![Doomgazer UI](docs/screenshot.png)
+
 ## Set the level
 
 The input meter is the held peak after Input Trim.
@@ -69,7 +71,7 @@ Each preset can carry a MIDI program number. In the browser that number is on th
 The factory set, in the browser's groups:
 
 - **Doom.** TWIN CORE, DYNAMIC HARMONIC CORE, SUBTERRANEAN LIFE DIVIDER, BONE-CRUSHER, WOOL VEIL, DRY CHOKE, RITUAL MASS, PICKED HALO, BARITONE VEIL, GAZE WALL.
-- **Drone.** CELESTIAL SHIMMER CATHEDRAL, MAXIMUM SHIELDS, SLOWDIVE SOFT FOCUS, HARMONIC OPTO-TREM DRONE, ETHEREAL REVERSE SWELL, HUM DRONE, SLOW HYMN.
+- **Drone.** CELESTIAL SHIMMER CATHEDRAL, MAXIMUM SHIELDS, SOFT FOCUS, HARMONIC OPTO-TREM DRONE, ETHEREAL REVERSE SWELL, HUM DRONE, SLOW HYMN.
 - **Space.** DENSE ROOM, DELAY BLOOM, TREBLE CREEP, RED ROOM, SPRING DRIP.
 - **Motion.** INVERTED ACOUSTIC BEAT, TUBE BIAS VOODOO PULSE, BLOWN CONE FLUTTER, TORN SPEAKER CHATTER, PHASE RITUAL, PEDAL SWELL.
 - **Grit.** VIOLIN SMOKE, BROKEN PA, COCKED RESIN, SPEAKER HOWL.
