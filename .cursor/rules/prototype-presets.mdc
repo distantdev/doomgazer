@@ -1,0 +1,12 @@
+---
+description: Prototype builds reset presets; do not keep old banks loading
+alwaysApply: true
+---
+
+# Prototype presets
+
+This plugin is still a prototype. Saved `.doomgazer` files, DAW sessions, MIDI maps, and host automation are reset with each update. They are not a compatibility target.
+
+- Add, remove, or reorder parameters when the sound needs it. Update `Parameters`, the factory table in `FactoryPresets.cpp`, and any test that names the current set in the same change.
+- Do not add migration, versioned unpacking, or spare slots so an older bank still loads.
+- Factory presets compiled into the plugin are the current sounds. Edit them freely. Do not keep a behavior so a previously saved slot still matches.

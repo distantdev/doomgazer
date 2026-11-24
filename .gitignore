@@ -1,0 +1,16 @@
+*.bak
+*.tmp
+*~
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pcm
+/build/
+/build-msvc/
+/build-audit/
+/out/
+.gemini/
+.cursor/tmp/
+third_party/
+.aider*
+plugin/assets/icon_previews/
