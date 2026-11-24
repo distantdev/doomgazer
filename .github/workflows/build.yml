@@ -1,0 +1,63 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache CPM downloads
+        uses: actions/cache@v4
+        with:
+          path: cpm-cache
+          key: cpm-${{ hashFiles('CMakeLists.txt', 'cmake/CPM.cmake') }}
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake --version
+          cmake -S . -B build-msvc -G "Visual Studio 18 2026" -A x64 `
+            -DDOOMGAZER_BUILD_PLUGIN=ON `
+            -DDOOMGAZER_BUILD_CLAP=ON `
+            -DDOOMGAZER_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build-msvc --config Release --target Doomgazer_VST3 Doomgazer_Standalone Doomgazer_CLAP
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "build-msvc/Doomgazer_artefacts/Release"
+          $stage = "dist/Doomgazer"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse -Force "$root/VST3/Doomgazer.vst3" $stage
+          Copy-Item -Force "$root/CLAP/Doomgazer.clap" $stage
+          Copy-Item -Force "$root/Standalone/Doomgazer.exe" $stage
+          tar.exe -a -cf Doomgazer-windows.zip -C dist Doomgazer
+
+      - name: Upload workflow artifact
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Doomgazer-windows
+          path: Doomgazer-windows.zip
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" Doomgazer-windows.zip --clobber

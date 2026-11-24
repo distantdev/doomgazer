@@ -104,6 +104,8 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Doomgazer.exe`.
 
+Publishing a GitHub release runs that same build and attaches `Doomgazer-windows.zip`. The release notes are the install instructions. The zip contains `Doomgazer.vst3`, `Doomgazer.clap`, and `Doomgazer.exe`.
+
 ## License
 
 Doomgazer is released under the MIT License. See [LICENSE](LICENSE).
