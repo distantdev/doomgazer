@@ -124,7 +124,7 @@ const std::array<double, kParameterCount> kPresetValues[kFactoryPresetCount] = {
             0, 0, 0, 0, 1, 0,
             0, 0, 3000, 125, 1350,
     },
-    // 05  SLOWDIVE SOFT FOCUS
+    // 05  SOFT FOCUS
         {
 
 
@@ -782,7 +782,7 @@ std::string presetName(int index)
         case 2: return "CELESTIAL SHIMMER CATHEDRAL";
         case 3: return "SUBTERRANEAN LIFE DIVIDER";
         case 4: return "MAXIMUM SHIELDS";
-        case 5: return "SLOWDIVE SOFT FOCUS";
+        case 5: return "SOFT FOCUS";
         case 6: return "HARMONIC OPTO-TREM DRONE";
         case 7: return "BONE-CRUSHER";
         case 8: return "RUNAWAY NOISE CATASTROPHE";

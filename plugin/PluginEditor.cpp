@@ -13,7 +13,6 @@ using dgui::AccentRole;
 // always visible. Nothing is hidden behind an expander or a scrollbar.
 constexpr int kBandCount = 7;
 constexpr int kModuleCount = 22;
-constexpr int kInputModule = 18;
 constexpr int kRigModule = 20;
 
 const char* const kBandName[kBandCount] = { "CORE", "TWIN", "CONTOUR", "DIRT", "SPACE", "MOD",
@@ -1563,7 +1562,6 @@ DoomgazerAudioProcessorEditor::DoomgazerAudioProcessorEditor(DoomgazerAudioProce
       spectrum(processor),
       tuner(processor),
       levelMeter(processor),
-      inputLevel(processor),
       browser(processor),
       midiPage(processor)
 {
@@ -1760,7 +1758,6 @@ DoomgazerAudioProcessorEditor::DoomgazerAudioProcessorEditor(DoomgazerAudioProce
     addAndMakeVisible(spectrum);
     addAndMakeVisible(tuner);
     addAndMakeVisible(levelMeter);
-    addChildComponent(inputLevel);
     addAndMakeVisible(hint);
     hint.setCompact(true);
     addAndMakeVisible(midiLed);
@@ -2008,7 +2005,6 @@ void DoomgazerAudioProcessorEditor::layoutChipRow()
 void DoomgazerAudioProcessorEditor::layoutModule()
 {
     modulePanel = {};
-    inputLevel.setVisible(false);
     for (auto* cell : knobCells)
         cell->setVisible(false);
     for (auto* cell : switchCells)
@@ -2106,21 +2102,16 @@ void DoomgazerAudioProcessorEditor::layoutModule()
         entries.empty() ? 0 : (twoRows ? 118 : (knobCount == 0 ? 112 : 72));
     const int rigBlock = rig ? 34 : 0;
     const int stackGap = (controlHeight > 0 || rigBlock > 0) ? 10 : 0;
-    const bool showInputLevel = activeModule == kInputModule;
-    const int inputLevelGap = showInputLevel && knobCount > 0 ? 8 : 0;
-    const int inputLevelBlock = showInputLevel ? 46 : 0;
 
     const int columns = juce::jmax(1, juce::jmin(knobCount, 8));
     const int rows = knobCount > 0 ? (knobCount + columns - 1) / columns : 0;
     const int room = juce::jmax(
-        64, (area.getHeight() - controlHeight - rigBlock - stackGap - inputLevelGap
-             - inputLevelBlock)
-                / juce::jmax(1, rows));
+        64, (area.getHeight() - controlHeight - rigBlock - stackGap) / juce::jmax(1, rows));
     const int cellHeight = juce::jmin(132, room);
     const int cellWidth = juce::jmin(126, (area.getWidth() - gap * (columns - 1)) / columns);
     const int rowsHeight = rows > 0 ? rows * cellHeight + gap * (rows - 1) : 0;
     const int blockHeight = rowsHeight + (rowsHeight > 0 ? stackGap : 0) + controlHeight
-        + (rigBlock > 0 ? rigBlock + gap : 0) + inputLevelGap + inputLevelBlock;
+        + (rigBlock > 0 ? rigBlock + gap : 0);
     area.removeFromTop(juce::jmax(0, (area.getHeight() - blockHeight) / 2));
 
     if (knobCount > 0)
@@ -2139,25 +2130,6 @@ void DoomgazerAudioProcessorEditor::layoutModule()
             moduleKnobs[static_cast<std::size_t>(index)]->setVisible(true);
         }
         area.removeFromTop(stackGap);
-    }
-
-    if (showInputLevel)
-    {
-        if (inputLevelGap > 0)
-            area.removeFromTop(inputLevelGap);
-        auto meterRow = area.removeFromTop(inputLevelBlock);
-        int x = meterRow.getX();
-        int width = meterRow.getWidth();
-        if (knobCount > 0)
-        {
-            auto span = moduleKnobs[0]->getBounds();
-            for (int index = 1; index < knobCount; ++index)
-                span = span.getUnion(moduleKnobs[static_cast<std::size_t>(index)]->getBounds());
-            x = span.getX();
-            width = span.getWidth();
-        }
-        inputLevel.setBounds(x, meterRow.getY(), width, meterRow.getHeight());
-        inputLevel.setVisible(true);
     }
 
     if (!entries.empty())
@@ -2245,8 +2217,6 @@ void DoomgazerAudioProcessorEditor::layoutModule()
         content = content.getUnion(moduleOrders[static_cast<std::size_t>(index)]->getBounds());
     for (int index = 0; index < switchCount; ++index)
         content = content.getUnion(moduleSwitches[static_cast<std::size_t>(index)]->getBounds());
-    if (inputLevel.isVisible())
-        content = content.getUnion(inputLevel.getBounds());
     if (!content.isEmpty())
     {
         const int padX = knobCount == 0 ? 26 : 16;
@@ -2285,7 +2255,7 @@ void DoomgazerAudioProcessorEditor::resized()
     auto column = meterArea;
     tunerArea = column.removeFromTop(104);
     column.removeFromTop(8);
-    levelsArea = column.removeFromTop(30).reduced(18, 0);
+    levelsArea = column.removeFromTop(41).reduced(18, 0);
     column.removeFromTop(8);
     spectrumArea = column.removeFromTop(column.getHeight() * 60 / 100);
     column.removeFromTop(8);
@@ -2570,16 +2540,10 @@ void DoomgazerAudioProcessorEditor::updateHint()
     if (over(levelMeter))
     {
         hint.setHint({}, "Levels",
-                     "Peak and RMS of the output on a 60 dB scale. The lamp lights when the "
-                     "output clips.");
-        return;
-    }
-    if (over(inputLevel))
-    {
-        hint.setHint({}, "Input level",
-                     "Held peak after Input Trim. Blue is under -18 dB, green is the -18 to -8 dB "
-                     "window the factory sounds were made in, and red is hotter. The lamp means "
-                     "the signal came in within 1 dB of full scale, before the trim.");
+                     "Three bars on a 60 dB scale. INPUT is the held peak after Input Trim. The two "
+                     "marks are the window, -18 to -8 dB, where the factory sounds were made. Its "
+                     "lamp is a clip on the way in, before the trim. PEAK and RMS are the output, "
+                     "and their lamp lights when the output clips.");
         return;
     }
 
@@ -3010,7 +2974,6 @@ void DoomgazerAudioProcessorEditor::timerCallback()
         tuner.repaint();
     }
     levelMeter.tick();
-    inputLevel.tick();
 
     for (auto* knob : knobCells)
         knob->tick();

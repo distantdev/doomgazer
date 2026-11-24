@@ -755,11 +755,11 @@ TEST_CASE("program changes follow the assigned PC, including a blank", "[plugin]
 
     const int twin = processor.presets().indexOfName("TWIN CORE", true);
     const int shields = processor.presets().indexOfName("MAXIMUM SHIELDS", true);
-    const int slowdive = processor.presets().indexOfName("SLOWDIVE SOFT FOCUS", true);
+    const int softFocus = processor.presets().indexOfName("SOFT FOCUS", true);
     const int wool = processor.presets().indexOfName("WOOL VEIL", true);
     REQUIRE(twin >= 0);
     REQUIRE(shields >= 0);
-    REQUIRE(slowdive >= 0);
+    REQUIRE(softFocus >= 0);
     REQUIRE(wool >= 0);
     REQUIRE(processor.presets().programCode(twin) == 0);
     REQUIRE(processor.presets().programCode(shields) == 4);
@@ -791,21 +791,21 @@ TEST_CASE("program changes follow the assigned PC, including a blank", "[plugin]
     sendProgram(processor, 70);
     REQUIRE(processor.currentPresetName() == "CELLAR");
 
-    const int slowdiveNow = processor.presets().indexOfName("SLOWDIVE SOFT FOCUS", true);
-    REQUIRE(slowdiveNow >= 0);
-    REQUIRE(processor.setPresetProgram(slowdiveNow, 70, error));
+    const int softFocusNow = processor.presets().indexOfName("SOFT FOCUS", true);
+    REQUIRE(softFocusNow >= 0);
+    REQUIRE(processor.setPresetProgram(softFocusNow, 70, error));
     REQUIRE(processor.presets().programCode(
                 processor.presets().indexOfName("CELLAR", false)) == -1);
-    REQUIRE(processor.presets().programCode(slowdiveNow) == 70);
+    REQUIRE(processor.presets().programCode(softFocusNow) == 70);
     dispatchMessages();
     sendProgram(processor, 70);
-    REQUIRE(processor.currentPresetIndex() == slowdiveNow);
+    REQUIRE(processor.currentPresetIndex() == softFocusNow);
 
     DoomgazerAudioProcessor again(temp.folder);
     const int againCellar = again.presets().indexOfName("CELLAR", false);
     REQUIRE(again.presets().programCode(again.presets().indexOfName("TWIN CORE", true)) == -1);
     REQUIRE(again.presets().programCode(again.presets().indexOfName("MAXIMUM SHIELDS", true)) == 40);
-    REQUIRE(again.presets().programCode(again.presets().indexOfName("SLOWDIVE SOFT FOCUS", true)) == 70);
+    REQUIRE(again.presets().programCode(again.presets().indexOfName("SOFT FOCUS", true)) == 70);
     REQUIRE(againCellar >= 0);
     REQUIRE(again.presets().programCode(againCellar) == -1);
 }

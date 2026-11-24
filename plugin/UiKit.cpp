@@ -13,6 +13,9 @@ constexpr float sheetCorner = 5.0f;
 // Every switch track is this wide, whether it sits in a module row or in the
 // footer output group.
 constexpr int switchTrackWidth = 26;
+// Marks on the input bar. The factory sounds sit in this window.
+constexpr float kInputWindowLowDb = -18.0f;
+constexpr float kInputWindowHighDb = -8.0f;
 
 namespace {
 
@@ -1691,6 +1694,8 @@ void LevelMeter::tick()
     const int size = static_cast<int>(buffer.size());
     const int write = engine.scopeWriteIndex();
     constexpr int span = 512;
+    const auto now = juce::Time::getMillisecondCounter();
+    bool changed = false;
 
     float rawPeak = 0.0f;
     double sumSquares = 0.0;
@@ -1705,13 +1710,13 @@ void LevelMeter::tick()
     if (rawPeak >= 1.0f && !clipped)
     {
         clipped = true;
-        clipUntil = juce::Time::getMillisecondCounter() + 1800;
-        repaint();
+        clipUntil = now + 1800;
+        changed = true;
     }
-    else if (clipped && juce::Time::getMillisecondCounter() > clipUntil && rawPeak < 1.0f)
+    else if (clipped && now > clipUntil && rawPeak < 1.0f)
     {
         clipped = false;
-        repaint();
+        changed = true;
     }
 
     // A little ballistics so the bars do not flicker at 30 Hz.
@@ -1721,28 +1726,96 @@ void LevelMeter::tick()
     {
         peak = nextPeak;
         rms = nextRms;
+        changed = true;
+    }
+
+    const float pre = audioProcessor.engine().takeInputPrePeak();
+    const float post = audioProcessor.engine().takeInputPostPeak();
+    float nextInput = inputLevel;
+    if (post >= nextInput)
+    {
+        nextInput = post;
+        inputHoldUntil = now + 300;
+    }
+    else if (now >= inputHoldUntil)
+    {
+        nextInput *= 0.84f;
+    }
+    if (std::abs(nextInput - inputLevel) > 0.0005f)
+    {
+        inputLevel = nextInput;
+        changed = true;
+    }
+
+    // -1 dBFS on the way in. Trim can pad this back into the window afterwards.
+    const float clipGain = juce::Decibels::decibelsToGain(-1.0f);
+    if (pre >= clipGain && !inputClipped)
+    {
+        inputClipped = true;
+        inputClipUntil = now + 1800;
+        changed = true;
+    }
+    else if (inputClipped && now > inputClipUntil && pre < clipGain)
+    {
+        inputClipped = false;
+        changed = true;
+    }
+
+    if (changed)
         repaint();
+}
+
+void LevelMeter::drawLamp(juce::Graphics& g, juce::Rectangle<float> row, bool lit) const
+{
+    // The socket is drawn whether or not it is lit, so the unlit state reads as
+    // a lamp that is off rather than as a gap in the row.
+    auto lamp = juce::Rectangle<float>(row.getX(), row.getCentreY() - 5.5f, row.getWidth(), 11.0f)
+                    .withSizeKeepingCentre(11.0f, 11.0f);
+    g.setColour(dgui::darkMode() ? dgui::well().brighter(0.10f) : dgui::well().darker(0.12f));
+    g.fillRoundedRectangle(lamp, 2.5f);
+    g.setColour(dgui::darkMode() ? dgui::line().withAlpha(0.95f)
+                                 : dgui::faint().withAlpha(0.85f));
+    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
+    if (lit)
+    {
+        g.setColour(dgui::red().withAlpha(0.30f));
+        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
+        g.setColour(dgui::red());
+        g.fillRoundedRectangle(lamp, 2.5f);
     }
 }
 
 void LevelMeter::paint(juce::Graphics& g)
 {
     auto area = getLocalBounds();
-    auto labels = area.removeFromLeft(32);
+    auto labels = area.removeFromLeft(44);
     auto lampBlock = area.removeFromRight(14);
     area.removeFromRight(6);
 
+    constexpr int trackHeight = 11;
+    constexpr int trackGap = 4;
+    const auto takeRow = [](juce::Rectangle<int>& block) {
+        auto row = block.removeFromTop(trackHeight);
+        if (block.getHeight() >= trackGap)
+            block.removeFromTop(trackGap);
+        return row;
+    };
+
+    auto inputLabel = takeRow(labels);
+    auto peakLabel = takeRow(labels);
+    auto rmsLabel = labels.removeFromTop(trackHeight);
+
+    auto inputArea = takeRow(area).toFloat();
+    auto peakArea = takeRow(area).toFloat();
+    auto rmsArea = area.removeFromTop(trackHeight).toFloat();
+    auto inputLamp = takeRow(lampBlock).toFloat();
+    auto outputLamp = lampBlock.toFloat();
+
     g.setColour(dgui::dim());
     g.setFont(dgui::trackedFont(7.5f, 1.2f, true));
-    g.drawText("PEAK", labels.removeFromTop(labels.getHeight() / 2),
-               juce::Justification::centredLeft);
-    g.drawText("RMS", labels, juce::Justification::centredLeft);
-
-    // Peak and RMS get the same track height; before, RMS was a thinner strip.
-    const int trackHeight = juce::jmax(8, (area.getHeight() - 5) / 2);
-    auto peakArea = area.removeFromTop(trackHeight).toFloat();
-    area.removeFromTop(5);
-    auto rmsArea = area.toFloat();
+    g.drawText("INPUT", inputLabel, juce::Justification::centredLeft);
+    g.drawText("PEAK", peakLabel, juce::Justification::centredLeft);
+    g.drawText("RMS", rmsLabel, juce::Justification::centredLeft);
 
     const auto dbToFraction = [](float level) {
         const float db = juce::Decibels::gainToDecibels(level, -60.0f);
@@ -1769,10 +1842,10 @@ void LevelMeter::paint(juce::Graphics& g)
         dgui::strokeWell(g, rect, 3.0f);
     };
 
+    drawTrack(inputArea, inputLevel, inputClipped ? dgui::red() : dgui::amber());
     drawTrack(peakArea, peak, clipped ? dgui::red() : dgui::amber());
     drawTrack(rmsArea, rms, dgui::green().withAlpha(0.9f));
 
-    // Scale ticks across both tracks.
     for (const float fraction : { 0.25f, 0.5f, 0.75f })
     {
         const float x = peakArea.getX() + peakArea.getWidth() * fraction;
@@ -1780,152 +1853,17 @@ void LevelMeter::paint(juce::Graphics& g)
         g.drawVerticalLine(juce::roundToInt(x), peakArea.getY() + 1.0f, rmsArea.getBottom() - 1.0f);
     }
 
-    // Clip lamp. The socket is drawn whether or not it is lit, so the unlit
-    // state reads as a lamp that is off rather than as a gap in the row.
-    auto lamp = lampBlock.removeFromLeft(12).withSizeKeepingCentre(11, 11).toFloat();
-    g.setColour(dgui::darkMode() ? dgui::well().brighter(0.10f) : dgui::well().darker(0.12f));
-    g.fillRoundedRectangle(lamp, 2.5f);
-    g.setColour(dgui::darkMode() ? dgui::line().withAlpha(0.95f)
-                                 : dgui::faint().withAlpha(0.85f));
-    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
-
-    if (clipped)
+    // The factory window, on the input track only. Same -60 dB scale as the bars.
+    g.setColour(dgui::green());
+    for (const float db : { kInputWindowLowDb, kInputWindowHighDb })
     {
-        g.setColour(dgui::red().withAlpha(0.30f));
-        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
-        g.setColour(dgui::red());
-        g.fillRoundedRectangle(lamp, 2.5f);
-    }
-}
-
-InputLevelMeter::InputLevelMeter(DoomgazerAudioProcessor& processor)
-    : audioProcessor(processor)
-{
-    setInterceptsMouseClicks(false, false);
-}
-
-juce::Colour InputLevelMeter::zoneColour(float peak) const
-{
-    const float db = juce::Decibels::gainToDecibels(peak, -120.0f);
-    if (db < -48.0f)
-        return dgui::faint();
-    if (db < -18.0f)
-        return dgui::blue();
-    if (db <= -8.0f)
-        return dgui::green();
-    return dgui::red();
-}
-
-void InputLevelMeter::tick()
-{
-    const float pre = audioProcessor.engine().takeInputPrePeak();
-    const float post = audioProcessor.engine().takeInputPostPeak();
-    const auto now = juce::Time::getMillisecondCounter();
-
-    if (post >= held)
-    {
-        held = post;
-        holdUntil = now + 300;
-    }
-    else if (now >= holdUntil)
-    {
-        held *= 0.84f;
+        const float fraction = juce::jlimit(0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        const float x = inputArea.getX() + inputArea.getWidth() * fraction;
+        g.drawLine(x, inputArea.getY() + 1.0f, x, inputArea.getBottom() - 1.0f, 1.5f);
     }
 
-    // -1 dBFS on the way in. Trim can pad this back into the window afterwards.
-    const float clipGain = juce::Decibels::decibelsToGain(-1.0f);
-    if (pre >= clipGain)
-    {
-        clipped = true;
-        clipUntil = now + 1800;
-    }
-    else if (clipped && now > clipUntil)
-    {
-        clipped = false;
-    }
-
-    if (isShowing())
-        repaint();
-}
-
-void InputLevelMeter::paint(juce::Graphics& g)
-{
-    auto area = getLocalBounds();
-    auto lampColumn = area.removeFromRight(36);
-    area.removeFromRight(8);
-
-    auto caption = area.removeFromTop(juce::jmin(13, area.getHeight() / 3));
-    g.setColour(dgui::dim());
-    g.setFont(dgui::trackedFont(7.5f, 1.2f, true));
-    g.drawText("LEVEL", caption, juce::Justification::centredLeft);
-
-    auto labels = area.removeFromBottom(juce::jmin(12, area.getHeight() / 3));
-    auto track = area.toFloat().reduced(0.0f, 1.0f);
-    if (track.getWidth() < 8.0f || track.getHeight() < 4.0f)
-        return;
-
-    constexpr float kFloorDb = -48.0f;
-    constexpr float kWindowLowDb = -18.0f;
-    constexpr float kWindowHighDb = -8.0f;
-    const auto dbToX = [&track](float db) {
-        const float fraction = juce::jlimit(0.0f, 1.0f, (db - kFloorDb) / (0.0f - kFloorDb));
-        return track.getX() + track.getWidth() * fraction;
-    };
-
-    dgui::fillWell(g, track, 3.0f);
-
-    juce::Path clipPath;
-    clipPath.addRoundedRectangle(track, 3.0f);
-    g.saveState();
-    g.reduceClipRegion(clipPath);
-
-    const float windowLeft = dbToX(kWindowLowDb);
-    const float windowRight = dbToX(kWindowHighDb);
-    g.setColour(dgui::green().withAlpha(dgui::darkMode() ? 0.22f : 0.28f));
-    g.fillRect(windowLeft, track.getY(), windowRight - windowLeft, track.getHeight());
-
-    g.setColour(dgui::green().withAlpha(0.70f));
-    g.drawVerticalLine(juce::roundToInt(windowLeft), track.getY() + 1.0f, track.getBottom() - 1.0f);
-    g.drawVerticalLine(juce::roundToInt(windowRight), track.getY() + 1.0f, track.getBottom() - 1.0f);
-
-    const float db = juce::Decibels::gainToDecibels(held, kFloorDb);
-    const float mark = dbToX(juce::jlimit(kFloorDb, 0.0f, db));
-    g.setColour(zoneColour(held));
-    g.fillRect(mark - 1.25f, track.getY() + 1.0f, 2.5f, track.getHeight() - 2.0f);
-    g.restoreState();
-
-    dgui::strokeWell(g, track, 3.0f);
-
-    g.setColour(dgui::faint());
-    g.setFont(dgui::font(8.0f));
-    const auto drawLabel = [&g, &labels](float x, const char* text) {
-        g.drawText(text, juce::roundToInt(x) - 16, labels.getY(), 32, labels.getHeight(),
-                   juce::Justification::centred);
-    };
-    drawLabel(windowLeft, "-18");
-    drawLabel(windowRight, "-8");
-    drawLabel(track.getRight() - 8.0f, "0");
-
-    g.setFont(dgui::font(8.0f));
-    g.setColour(clipped ? dgui::red() : dgui::dim());
-    g.drawText("CLIP", lampColumn.getX(), caption.getY(), lampColumn.getWidth(), caption.getHeight(),
-               juce::Justification::centred);
-
-    auto lamp = juce::Rectangle<float>(static_cast<float>(lampColumn.getX()),
-                                       track.getCentreY() - 5.5f,
-                                       static_cast<float>(lampColumn.getWidth()), 11.0f)
-                    .withSizeKeepingCentre(11.0f, 11.0f);
-    g.setColour(dgui::darkMode() ? dgui::well().brighter(0.10f) : dgui::well().darker(0.12f));
-    g.fillRoundedRectangle(lamp, 2.5f);
-    g.setColour(dgui::darkMode() ? dgui::line().withAlpha(0.95f) : dgui::faint().withAlpha(0.85f));
-    g.drawRoundedRectangle(lamp.reduced(0.5f), 2.5f, 1.0f);
-    if (clipped)
-    {
-        g.setColour(dgui::red().withAlpha(0.30f));
-        g.fillRoundedRectangle(lamp.expanded(3.0f), 4.0f);
-        g.setColour(dgui::red());
-        g.fillRoundedRectangle(lamp, 2.5f);
-    }
+    drawLamp(g, inputLamp, inputClipped);
+    drawLamp(g, outputLamp, clipped);
 }
 
 void Led::paint(juce::Graphics& g)

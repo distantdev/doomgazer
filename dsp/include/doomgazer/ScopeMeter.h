@@ -125,14 +125,20 @@ private:
             const double t = static_cast<double>(band) / static_cast<double>(kSpectrumBands - 1);
             const std::size_t stage = std::min(spectrumLadder.size() - 1,
                                                  static_cast<std::size_t>(t * static_cast<double>(spectrumLadder.size())));
+            // The ladder is a lowpass, so a steady note would sit on a flat
+            // shelf. Drop the broadband floor about 30 dB across the plot.
+            const double tilt = std::pow(10.0, -1.5 * t);
             const double pick = (band < 4)
                                     ? instant
-                                    : std::max(instant * 0.35, std::abs(spectrumLadder[stage]));
+                                    : std::max(instant * 0.35 * tilt, std::abs(spectrumLadder[stage]));
             spectrumEnergy[static_cast<std::size_t>(band)] =
                 0.90 * spectrumEnergy[static_cast<std::size_t>(band)] + 0.10 * pick;
-            const double shaped = std::sqrt(spectrumEnergy[static_cast<std::size_t>(band)] + 1.0e-12);
+            // Same -60..0 dB window as the peak meter. sqrt(level) * 7.5
+            // reached full scale near -35 dBFS, so a quiet note pinned every band.
+            const double amplitude = std::max(spectrumEnergy[static_cast<std::size_t>(band)], 1.0e-8);
+            const double db = 20.0 * std::log10(amplitude);
             spectrumLevels[static_cast<std::size_t>(band)] =
-                static_cast<float>(std::min(1.0, shaped * 7.5));
+                static_cast<float>(std::clamp((db + 60.0) / 60.0, 0.0, 1.0));
         }
     }
 };

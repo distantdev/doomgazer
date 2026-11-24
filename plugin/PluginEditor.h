@@ -247,7 +247,6 @@ private:
     dgui::SpectrumPanel spectrum;
     dgui::TunerPanel tuner;
     dgui::LevelMeter levelMeter;
-    dgui::InputLevelMeter inputLevel;
     dgui::HintCard hint;
     dgui::Led midiLed;
     dgui::PresetBarButton presetBar;

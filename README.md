@@ -1,6 +1,6 @@
 # Doomgazer
 
-Downtuned guitar processor, version 0.1.0, from [Distant Nebula](https://distantnebula.com/).
+Downtuned guitar processor, version 0.1.1, from [Distant Nebula](https://distantnebula.com/).
 
 It is a VST3, a CLAP, and a standalone app for downtuned guitar. Two paths share one contour, then grit, space, and modulation.
 
@@ -8,15 +8,9 @@ It is a VST3, a CLAP, and a standalone app for downtuned guitar. Two paths share
 
 ## Set the level
 
-The input meter is the held peak after Input Trim.
+INPUT sits with Peak and RMS, on the same 60 dB scale. It is the held peak after Input Trim. Two marks on that bar are the window the factory sounds were made in, -18 to -8 dB. Its lamp means the guitar reached the plugin within 1 dB of full scale, before the trim. If the interface gain is already low and that lamp is on, turn Input down.
 
-- Blue is under -18 dB.
-- Green is -18 to -8 dB. The factory sounds were made in this window.
-- Red is hotter than -8 dB.
-
-The lamp means the guitar reached the plugin within 1 dB of full scale, before the trim. If the interface gain is already low and the lamp is on, turn Input down.
-
-Mute silences the output so you can tune. The tuner stays live: green is in tune, red is sharp or flat. While Mute is on, the scope shows the dry input. Otherwise the scope is the output, with the input as a faint trace behind it. The spectrum is the dry input, from 50 Hz to 10 kHz. Peak and RMS are the output, and their lamp lights when the output clips.
+Mute silences the output so you can tune. The tuner stays live: green is in tune, red is sharp or flat. While Mute is on, the scope shows the dry input. Otherwise the scope is the output, with the input as a faint trace behind it. The spectrum is the dry input, from 50 Hz to 10 kHz, on the same -60 to 0 dB window as the peak meter. Peak and RMS are the output, and their lamp lights when the output clips.
 
 ## CORE and TWIN
 
@@ -107,6 +101,10 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Doomgazer.exe`.
 
 Publishing a GitHub release runs that same build and attaches `Doomgazer-windows.zip`. The release notes are the install instructions. The zip contains `Doomgazer.vst3`, `Doomgazer.clap`, and `Doomgazer.exe`.
+
+## 0.1.1
+
+The spectrum no longer pins a quiet note to the top of the graph. INPUT, PEAK, and RMS are three matching bars, and INPUT has its own clip lamp plus the two window marks. The factory preset formerly named SLOWDIVE SOFT FOCUS is now SOFT FOCUS.
 
 ## License
 
