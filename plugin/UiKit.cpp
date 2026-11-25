@@ -575,14 +575,14 @@ KnobCell::KnobCell(DoomgazerAudioProcessor& processor, int parameterIndex,
     slider.onDragEnd = [this] { if (onHintLock) onHintLock(0); };
 
     const char* id = doomgazer::parameterId(index);
-    if (auto* parameter = audioProcessor.apvts.getParameter(id))
+    if (auto* parameter = audioProcessor.findParameter(id))
     {
         const double fallback = parameter->convertFrom0to1(parameter->getDefaultValue());
         slider.setDoubleClickReturnValue(true, fallback);
     }
 
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        audioProcessor.apvts, id, slider);
+        audioProcessor.stateFor(id), id, slider);
 
     const int textParameter = index;
     slider.textFromValueFunction = [textParameter](double value) {
@@ -690,7 +690,7 @@ void KnobCell::showMenu()
                            }
                            else if (result == 3)
                            {
-                               if (auto* parameter = safe->audioProcessor.apvts.getParameter(
+                               if (auto* parameter = safe->audioProcessor.findParameter(
                                        doomgazer::parameterId(safe->index)))
                                    parameter->setValueNotifyingHost(parameter->getDefaultValue());
                            }
@@ -821,7 +821,7 @@ SwitchCell::SwitchCell(DoomgazerAudioProcessor& processor, int parameterIndex,
     addAndMakeVisible(toggle);
     toggle.onContextMenu = [this] { showMenu(); };
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        audioProcessor.apvts, doomgazer::parameterId(index), toggle);
+        audioProcessor.stateFor(doomgazer::parameterId(index)), doomgazer::parameterId(index), toggle);
 }
 
 void SwitchCell::resized()
@@ -956,7 +956,7 @@ void SwitchCell::showMenu()
                            }
                            else if (result == 3)
                            {
-                               if (auto* parameter = safe->audioProcessor.apvts.getParameter(
+                               if (auto* parameter = safe->audioProcessor.findParameter(
                                        doomgazer::parameterId(safe->index)))
                                    parameter->setValueNotifyingHost(parameter->getDefaultValue());
                            }
@@ -972,7 +972,7 @@ SelectorCell::SelectorCell(DoomgazerAudioProcessor& processor, int parameterInde
 {
     labels[0] = firstLabel;
     labels[1] = secondLabel;
-    if (const auto* value = audioProcessor.apvts.getRawParameterValue(doomgazer::parameterId(index)))
+    if (const auto* value = audioProcessor.findRawValue(doomgazer::parameterId(index)))
         shownState = value->load() > 0.5f ? 1 : 0;
 }
 
@@ -1087,7 +1087,7 @@ void SelectorCell::setLearning(bool shouldLearn)
 
 void SelectorCell::tick()
 {
-    const auto* value = audioProcessor.apvts.getRawParameterValue(doomgazer::parameterId(index));
+    const auto* value = audioProcessor.findRawValue(doomgazer::parameterId(index));
     const int state = value != nullptr && value->load() > 0.5f ? 1 : 0;
     if (state != shownState)
     {
@@ -1099,7 +1099,7 @@ void SelectorCell::tick()
 
 void SelectorCell::choose(bool second)
 {
-    if (auto* parameter = audioProcessor.apvts.getParameter(doomgazer::parameterId(index)))
+    if (auto* parameter = audioProcessor.findParameter(doomgazer::parameterId(index)))
         parameter->setValueNotifyingHost(parameter->convertTo0to1(second ? 1.0f : 0.0f));
 }
 
@@ -1129,7 +1129,7 @@ void SelectorCell::showMenu()
                            }
                            else if (result == 3)
                            {
-                               if (auto* parameter = safe->audioProcessor.apvts.getParameter(
+                               if (auto* parameter = safe->audioProcessor.findParameter(
                                        doomgazer::parameterId(safe->index)))
                                    parameter->setValueNotifyingHost(parameter->getDefaultValue());
                            }
@@ -1158,11 +1158,11 @@ OrderCell::OrderCell(DoomgazerAudioProcessor& processor, int parameterIndex,
     toggle.onContextMenu = [this] { showMenu(); };
     toggle.onClick = [this] {
         // Up is the first path. The parameter is 0 for "first stage first".
-        if (auto* parameter = audioProcessor.apvts.getParameter(doomgazer::parameterId(index)))
+        if (auto* parameter = audioProcessor.findParameter(doomgazer::parameterId(index)))
             parameter->setValueNotifyingHost(
                 parameter->convertTo0to1(toggle.getToggleState() ? 0.0f : 1.0f));
     };
-    if (const auto* value = audioProcessor.apvts.getRawParameterValue(doomgazer::parameterId(index)))
+    if (const auto* value = audioProcessor.findRawValue(doomgazer::parameterId(index)))
     {
         shownState = value->load() > 0.5f ? 1 : 0;
         toggle.setToggleState(shownState == 0, juce::dontSendNotification);
@@ -1259,7 +1259,7 @@ void OrderCell::setLearning(bool shouldLearn)
 
 void OrderCell::tick()
 {
-    const auto* value = audioProcessor.apvts.getRawParameterValue(doomgazer::parameterId(index));
+    const auto* value = audioProcessor.findRawValue(doomgazer::parameterId(index));
     const int state = value != nullptr && value->load() > 0.5f ? 1 : 0;
     if (state != shownState)
     {

@@ -55,19 +55,19 @@ void sendNote(DoomgazerAudioProcessor& processor, int note, int velocity)
 
 float rawValue(DoomgazerAudioProcessor& processor, const char* id)
 {
-    const auto* value = processor.apvts.getRawParameterValue(id);
+    const auto* value = processor.findRawValue(id);
     return value != nullptr ? value->load() : 0.0f;
 }
 
 float parameterValue(DoomgazerAudioProcessor& processor, const char* id)
 {
-    const auto* parameter = processor.apvts.getParameter(id);
+    const auto* parameter = processor.findParameter(id);
     return parameter != nullptr ? parameter->getValue() : 0.0f;
 }
 
 void setPlain(DoomgazerAudioProcessor& processor, const char* id, float plain)
 {
-    if (auto* parameter = processor.apvts.getParameter(id))
+    if (auto* parameter = processor.findParameter(id))
         parameter->setValueNotifyingHost(parameter->convertTo0to1(plain));
 }
 
@@ -519,11 +519,11 @@ TEST_CASE("presets recall sag, anti-fizz and sub-oct level", "[plugin][batch-c1]
     const doomgazer::Parameters expected = doomgazer::factoryPreset(1);
     processor.loadPreset(dynamic);
 
-    REQUIRE(processor.apvts.getRawParameterValue("antiFizz")->load()
+    REQUIRE(processor.findRawValue("antiFizz")->load()
             == Catch::Approx(expected.antiFizzHz).margin(0.5));
-    REQUIRE(processor.apvts.getRawParameterValue("sag")->load()
+    REQUIRE(processor.findRawValue("sag")->load()
             == Catch::Approx(expected.sag).margin(0.001));
-    REQUIRE(processor.apvts.getRawParameterValue("subOctLevel")->load()
+    REQUIRE(processor.findRawValue("subOctLevel")->load()
             == Catch::Approx(expected.subOctLevel).margin(0.001));
 
     juce::MidiBuffer empty;
@@ -1081,4 +1081,43 @@ TEST_CASE("release tags compare as dotted numbers", "[release]")
     REQUIRE(isNewerRelease("1.0.0", "0.9.9"));
     REQUIRE(isNewerRelease("1.10.0", "1.9.0"));
     REQUIRE(isNewerRelease("0.2.0-rc1", "0.1.1"));
+}
+
+TEST_CASE("host parameters are typed for a control surface", "[plugin][host]")
+{
+    JuceGuard guard;
+    TempPresetFolder temp;
+    DoomgazerAudioProcessor processor(temp.folder);
+
+    const auto& params = processor.getParameters();
+    REQUIRE(params.size() == doomgazer::kHostVisibleCount);
+    REQUIRE(params[0] == processor.apvts.getParameter("master"));
+    REQUIRE(params[0]->getName(32) == "Master");
+    REQUIRE(params[0]->isAutomatable());
+    REQUIRE(processor.apvts.getParameter("antiFizz") == nullptr);
+    REQUIRE(processor.findParameter("antiFizz") != nullptr);
+    REQUIRE(processor.findParameter("controllerMode") != nullptr);
+    REQUIRE(processor.apvts.getParameter("controllerMode") == nullptr);
+
+    auto* engine = processor.apvts.getParameter("engine");
+    REQUIRE(engine != nullptr);
+    REQUIRE(engine->isDiscrete());
+    REQUIRE_FALSE(engine->isBoolean());
+    REQUIRE(engine->getAllValueStrings()[0] == "Core");
+    REQUIRE(engine->getAllValueStrings()[1] == "Twin");
+
+    auto* delay = processor.apvts.getParameter("delayMode");
+    REQUIRE(delay->getAllValueStrings().size() == 3);
+    REQUIRE(delay->getAllValueStrings()[1] == "Tape Echo");
+
+    REQUIRE(processor.apvts.getParameter("limiter")->isBoolean());
+
+    setPlain(processor, "engine", 0.0f);
+    REQUIRE(rawValue(processor, "engine") == 0.0f);
+    setPlain(processor, "delayMode", 2.0f);
+    REQUIRE(rawValue(processor, "delayMode") == 2.0f);
+    setPlain(processor, "limiter", 0.0f);
+    REQUIRE(rawValue(processor, "limiter") == 0.0f);
+    setPlain(processor, "antiFizz", 1400.0f);
+    REQUIRE(rawValue(processor, "antiFizz") == Catch::Approx(1400.0f).margin(1.0f));
 }

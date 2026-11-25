@@ -1,6 +1,6 @@
 # Doomgazer
 
-Downtuned guitar processor, version 0.1.1, from [Distant Nebula](https://distantnebula.com/).
+Downtuned guitar processor, version 0.1.2, from [Distant Nebula](https://distantnebula.com/).
 
 It is a VST3, a CLAP, and a standalone app for downtuned guitar. Two paths share one contour, then grit, space, and modulation.
 
@@ -101,6 +101,10 @@ Use that Visual Studio generator for `build-msvc`. The build writes:
 It does not copy them into a host. Put the VST3 in `C:\Program Files\Common Files\VST3` and the CLAP in `C:\Program Files\Common Files\CLAP`, then rescan. The standalone uses ASIO. Run `Doomgazer.exe`.
 
 Publishing a GitHub release runs that same build and attaches `Doomgazer-windows.zip`. The release notes are the install instructions. The zip contains `Doomgazer.vst3`, `Doomgazer.clap`, and `Doomgazer.exe`.
+
+## 0.1.2
+
+Ableton Push maps the performance controls. The host sees 63 parameters, knobs first. Switches and mode pickers are real host controls. The deep trims stay in the plugin for the panel, presets, and MIDI learn.
 
 ## 0.1.1
 

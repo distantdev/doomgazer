@@ -9,7 +9,10 @@
 #include <array>
 #include <atomic>
 #include <map>
+#include <memory>
 #include <vector>
+
+class HiddenParameterHost;
 
 class DoomgazerAudioProcessor : public juce::AudioProcessor,
                                 private juce::AsyncUpdater
@@ -45,6 +48,10 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    juce::RangedAudioParameter* findParameter(const juce::String& parameterID) const;
+    std::atomic<float>* findRawValue(const juce::String& parameterID) const;
+    juce::AudioProcessorValueTreeState& stateFor(const juce::String& parameterID);
 
     // Presets -----------------------------------------------------------------
     PresetLibrary& presets() noexcept { return library; }
@@ -156,6 +163,8 @@ private:
                                                         const doomgazer::Parameters& live);
 
     doomgazer::Processor dsp;
+    std::unique_ptr<HiddenParameterHost> hiddenHost;
+    juce::AudioProcessorValueTreeState hiddenApvts;
     PresetLibrary library;
 
     mutable juce::CriticalSection presetLock;

@@ -5,29 +5,107 @@
 #include <cmath>
 #include <cstring>
 
+class HiddenParameterHost : public juce::AudioProcessor
+{
+public:
+    HiddenParameterHost()
+        : AudioProcessor(BusesProperties())
+    {
+    }
+
+    const juce::String getName() const override { return {}; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    bool isMidiEffect() const override { return false; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+};
 
 namespace {
 
-juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
+void appendParameter(std::vector<std::unique_ptr<juce::RangedAudioParameter>>& parameters,
+                     int index, const doomgazer::Parameters& defaults)
+{
+    const juce::ParameterID id { doomgazer::parameterId(index), 1 };
+    const juce::String name(doomgazer::parameterHostName(index));
+    const bool automatable = doomgazer::parameterIsAutomatable(index);
+    const auto kind = doomgazer::parameterKind(index);
+
+    switch (kind)
+    {
+        case doomgazer::ParameterKind::toggle:
+            parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+                id, name, defaults.at(index) >= 0.5,
+                juce::AudioParameterBoolAttributes().withAutomatable(automatable)));
+            break;
+
+        case doomgazer::ParameterKind::choice:
+        {
+            const doomgazer::ChoiceList choices = doomgazer::parameterChoices(index);
+            juce::StringArray labels;
+            for (int item = 0; item < choices.count; ++item)
+                labels.add(choices.names[item]);
+            const int initial = juce::jlimit(
+                0, juce::jmax(0, choices.count - 1),
+                juce::roundToInt(defaults.at(index)));
+            parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+                id, name, labels, initial,
+                juce::AudioParameterChoiceAttributes().withAutomatable(automatable)));
+            break;
+        }
+
+        case doomgazer::ParameterKind::continuous:
+        {
+            const doomgazer::ParameterRange range = doomgazer::parameterRange(index);
+            parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+                id, name,
+                juce::NormalisableRange<float>(static_cast<float>(range.min),
+                                               static_cast<float>(range.max),
+                                               static_cast<float>(range.step)),
+                static_cast<float>(defaults.at(index)),
+                juce::AudioParameterFloatAttributes()
+                    .withLabel(doomgazer::parameterUnit(index))
+                    .withAutomatable(automatable)));
+            break;
+        }
+
+        default:
+        {
+            const auto unhandled = kind;
+            juce::ignoreUnused(unhandled);
+            jassertfalse;
+            break;
+        }
+    }
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout createLayout(bool hostVisible)
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve(static_cast<std::size_t>(doomgazer::kParameterCount));
     const doomgazer::Parameters defaults;
 
-    for (int index = 1; index <= doomgazer::kParameterCount; ++index)
+    if (hostVisible)
     {
-        const doomgazer::ParameterRange range = doomgazer::parameterRange(index);
-        juce::NormalisableRange<float> span(
-            static_cast<float>(range.min),
-            static_cast<float>(range.max),
-            static_cast<float>(range.step));
-
-        parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
-            juce::ParameterID { doomgazer::parameterId(index), 1 },
-            doomgazer::parameterName(index),
-            span,
-            static_cast<float>(defaults.at(index)),
-            juce::AudioParameterFloatAttributes().withLabel(doomgazer::parameterUnit(index))));
+        parameters.reserve(static_cast<std::size_t>(doomgazer::kHostVisibleCount));
+        for (const int index : doomgazer::kHostParameterOrder)
+            appendParameter(parameters, index, defaults);
+    }
+    else
+    {
+        for (int index = 1; index <= doomgazer::kParameterCount; ++index)
+            if (!doomgazer::parameterIsHostVisible(index))
+                appendParameter(parameters, index, defaults);
     }
 
     return { parameters.begin(), parameters.end() };
@@ -90,7 +168,9 @@ DoomgazerAudioProcessor::DoomgazerAudioProcessor(juce::File presetFolder)
     : AudioProcessor(BusesProperties()
           .withInput("Input", juce::AudioChannelSet::stereo(), true)
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts(*this, nullptr, "PARAMS", createLayout()),
+      apvts(*this, nullptr, "PARAMS", createLayout(true)),
+      hiddenHost(std::make_unique<HiddenParameterHost>()),
+      hiddenApvts(*hiddenHost, nullptr, "HIDDEN", createLayout(false)),
       library(presetFolder)
 {
     for (auto& value : ccMap)
@@ -106,7 +186,7 @@ DoomgazerAudioProcessor::DoomgazerAudioProcessor(juce::File presetFolder)
     lastControllerValue.fill(-1);
 
     for (int index = 1; index <= doomgazer::kParameterCount; ++index)
-        raw[static_cast<std::size_t>(index)] = apvts.getRawParameterValue(doomgazer::parameterId(index));
+        raw[static_cast<std::size_t>(index)] = findRawValue(doomgazer::parameterId(index));
 
     loadMidiState();
     loadRigState();
@@ -198,7 +278,7 @@ void DoomgazerAudioProcessor::handleAsyncUpdate()
             -1, std::memory_order_acq_rel);
         if (value < 0)
             continue;
-        if (auto* parameter = apvts.getParameter(doomgazer::parameterId(index)))
+        if (auto* parameter = findParameter(doomgazer::parameterId(index)))
             parameter->setValueNotifyingHost(
                 juce::jlimit(0.0f, 1.0f, static_cast<float>(value) / 1000.0f));
     }
@@ -236,7 +316,7 @@ void DoomgazerAudioProcessor::handleAsyncUpdate()
             : (bitsHi & (1ull << (bit - 64))) != 0;
         if (!pending)
             continue;
-        if (auto* parameter = apvts.getParameter(doomgazer::parameterId(index)))
+        if (auto* parameter = findParameter(doomgazer::parameterId(index)))
             parameter->sendValueChangedMessageToListeners(parameter->getValue());
     }
 }
@@ -260,7 +340,7 @@ void DoomgazerAudioProcessor::writeParameters(const doomgazer::Parameters& param
     {
         if (parameterIsProjectSetting(index))
             continue;
-        if (auto* parameter = apvts.getParameter(doomgazer::parameterId(index)))
+        if (auto* parameter = findParameter(doomgazer::parameterId(index)))
         {
             const float plain = static_cast<float>(params.at(index));
             parameter->setValueNotifyingHost(parameter->convertTo0to1(plain));
@@ -965,7 +1045,7 @@ void DoomgazerAudioProcessor::loadRigState()
 bool DoomgazerAudioProcessor::stompIsOn(int stomp) const noexcept
 {
     const auto above = [this](const char* id, double threshold) {
-        if (const auto* value = apvts.getRawParameterValue(id))
+        if (const auto* value = findRawValue(id))
             return value->load() > static_cast<float>(threshold);
         return false;
     };
@@ -997,7 +1077,7 @@ bool DoomgazerAudioProcessor::stompIsOn(int stomp) const noexcept
 
 void DoomgazerAudioProcessor::setPlainValue(const char* id, float plain) noexcept
 {
-    auto* parameter = apvts.getParameter(id);
+    auto* parameter = findParameter(id);
     if (parameter == nullptr)
         return;
     parameter->setValue(parameter->convertTo0to1(plain));
@@ -1013,7 +1093,7 @@ void DoomgazerAudioProcessor::setPlainValue(const char* id, float plain) noexcep
 
 float DoomgazerAudioProcessor::plainValue(const char* id) const noexcept
 {
-    if (auto* parameter = apvts.getRawParameterValue(id))
+    if (auto* parameter = findRawValue(id))
         return parameter->load();
     return 0.0f;
 }
@@ -1518,6 +1598,27 @@ void DoomgazerAudioProcessor::noteReportedProgram()
     reportedProgram.store(code, std::memory_order_relaxed);
 }
 
+juce::RangedAudioParameter* DoomgazerAudioProcessor::findParameter(const juce::String& parameterID) const
+{
+    if (auto* parameter = apvts.getParameter(parameterID))
+        return parameter;
+    return hiddenApvts.getParameter(parameterID);
+}
+
+std::atomic<float>* DoomgazerAudioProcessor::findRawValue(const juce::String& parameterID) const
+{
+    if (auto* value = apvts.getRawParameterValue(parameterID))
+        return value;
+    return hiddenApvts.getRawParameterValue(parameterID);
+}
+
+juce::AudioProcessorValueTreeState& DoomgazerAudioProcessor::stateFor(const juce::String& parameterID)
+{
+    if (apvts.getParameter(parameterID) != nullptr)
+        return apvts;
+    return hiddenApvts;
+}
+
 void DoomgazerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     storeMidiState();
@@ -1525,7 +1626,12 @@ void DoomgazerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     storePresetIdentity();
     storeRigState();
 
-    if (auto xml = apvts.copyState().createXml())
+    auto combined = apvts.copyState();
+    const auto extra = hiddenApvts.copyState();
+    for (int index = 0; index < extra.getNumChildren(); ++index)
+        combined.appendChild(extra.getChild(index).createCopy(), nullptr);
+
+    if (auto xml = combined.createXml())
         copyXmlToBinary(*xml, destData);
 }
 
@@ -1542,7 +1648,25 @@ void DoomgazerAudioProcessor::setStateInformation(const void* data, int sizeInBy
     acceptHostProgram.store(false, std::memory_order_release);
     pendingProgram.store(-1, std::memory_order_relaxed);
     pendingPresetStep.store(0, std::memory_order_relaxed);
-    apvts.replaceState(state);
+
+    auto hosted = juce::ValueTree(apvts.state.getType());
+    auto internal = juce::ValueTree(hiddenApvts.state.getType());
+    for (int index = 0; index < state.getNumProperties(); ++index)
+    {
+        const auto name = state.getPropertyName(index);
+        hosted.setProperty(name, state.getProperty(name), nullptr);
+    }
+    for (int index = 0; index < state.getNumChildren(); ++index)
+    {
+        auto child = state.getChild(index).createCopy();
+        const auto id = child.getProperty("id").toString();
+        if (hiddenApvts.getParameter(id) != nullptr)
+            internal.appendChild(std::move(child), nullptr);
+        else
+            hosted.appendChild(std::move(child), nullptr);
+    }
+    apvts.replaceState(hosted);
+    hiddenApvts.replaceState(internal);
     loadMidiState();
     loadRigState();
     restorePresetIdentity();

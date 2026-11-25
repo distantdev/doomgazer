@@ -276,7 +276,7 @@ const char* helpFor(int parameter)
         case 23: return "High cut. Steep cutoff at the end of the contour.";
         case 24: return "Master. Final output level before the limiter and the PA mono fold.";
         case 25: return "Controller mode. When on, the preset CC below selects a preset by message value.";
-        case 26: return "Preset number. Follows the loaded preset so the host can automate the choice.";
+        case 26: return "Preset number. Follows the loaded preset.";
         case 27: return "Preset CC. The controller number that selects a preset when controller mode is on.";
         case 28: return "Sag. Power-supply sag. Harder hits compress and lose a little edge.";
         case 29: return "Anti-fizz. Low-pass between fuzz stages. Lower settings remove harsh fizz.";
@@ -386,9 +386,9 @@ void styleEditor(juce::TextEditor& editor)
     editor.setIndents(6, 0);
 }
 
-void setPlain(juce::AudioProcessorValueTreeState& state, const char* id, float plain)
+void setPlain(DoomgazerAudioProcessor& processor, const char* id, float plain)
 {
-    if (auto* parameter = state.getParameter(id))
+    if (auto* parameter = processor.findParameter(id))
         parameter->setValueNotifyingHost(parameter->convertTo0to1(plain));
 }
 
@@ -1245,7 +1245,8 @@ MidiPage::MidiPage(DoomgazerAudioProcessor& processor)
     presetCcBar.setSliderStyle(juce::Slider::LinearBar);
     presetCcBar.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 44, 22);
     presetCcAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        audioProcessor.apvts, doomgazer::parameterId(doomgazer::kPresetCcParameter),
+        audioProcessor.stateFor(doomgazer::parameterId(doomgazer::kPresetCcParameter)),
+        doomgazer::parameterId(doomgazer::kPresetCcParameter),
         presetCcBar);
 
     addAndMakeVisible(selectByCc);
@@ -1253,8 +1254,8 @@ MidiPage::MidiPage(DoomgazerAudioProcessor& processor)
     selectByCc.setClickingTogglesState(false);
     selectByCc.getProperties().set("strong", true);
     selectByCc.onClick = [this] {
-        const float plain = audioProcessor.apvts.getRawParameterValue("controllerMode")->load();
-        setPlain(audioProcessor.apvts, "controllerMode", plain > 0.5f ? 0.0f : 1.0f);
+        const float plain = audioProcessor.findRawValue("controllerMode")->load();
+        setPlain(audioProcessor, "controllerMode", plain > 0.5f ? 0.0f : 1.0f);
         refresh();
     };
 
@@ -1497,7 +1498,7 @@ void MidiPage::refresh()
     programChange.setToggleState(programOn, juce::dontSendNotification);
     programChange.setButtonText(programOn ? "ON" : "OFF");
 
-    const float byCc = audioProcessor.apvts.getRawParameterValue("controllerMode")->load();
+    const float byCc = audioProcessor.findRawValue("controllerMode")->load();
     selectByCc.setToggleState(byCc > 0.5f, juce::dontSendNotification);
     selectByCc.setButtonText(byCc > 0.5f ? "BY CC" : "SELECT BY CC");
 
@@ -1644,7 +1645,7 @@ DoomgazerAudioProcessorEditor::DoomgazerAudioProcessorEditor(DoomgazerAudioProce
         box->onChange = [this, box = box.get(), parameter, firstValue] {
             if (box->getSelectedId() <= 0)
                 return;
-            setPlain(audioProcessor.apvts, doomgazer::parameterId(parameter),
+            setPlain(audioProcessor, doomgazer::parameterId(parameter),
                      static_cast<float>(box->getSelectedId() - 1 + firstValue));
         };
         box->onContextMenu = [this, box = box.get(), parameter] {
@@ -1667,7 +1668,7 @@ DoomgazerAudioProcessorEditor::DoomgazerAudioProcessorEditor(DoomgazerAudioProce
                                        audioProcessor.clearMapping(parameter);
                                    else if (result == 3)
                                    {
-                                       if (auto* p = audioProcessor.apvts.getParameter(
+                                       if (auto* p = audioProcessor.findParameter(
                                                doomgazer::parameterId(parameter)))
                                            p->setValueNotifyingHost(p->getDefaultValue());
                                    }
@@ -2924,7 +2925,7 @@ void DoomgazerAudioProcessorEditor::refreshModeBoxes()
     for (std::size_t index = 0; index < modeBoxes.size(); ++index)
     {
         const int parameter = modeBoxParameter[index];
-        auto* value = audioProcessor.apvts.getRawParameterValue(doomgazer::parameterId(parameter));
+        auto* value = audioProcessor.findRawValue(doomgazer::parameterId(parameter));
         if (value == nullptr)
             continue;
         int numeric = static_cast<int>(std::lround(value->load()));

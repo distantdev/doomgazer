@@ -2,6 +2,7 @@
 
 #include "doomgazer/MathConstants.h"
 
+#include <array>
 #include <string>
 
 namespace doomgazer {
@@ -13,8 +14,8 @@ struct ParameterRange
     double step = 0.01;
 };
 
-// Live control state. Field order is the host parameter order, index 1..kParameterCount.
-// Every field is also a host parameter; the editor decides which page shows it.
+// Live control state. Field order is the preset and project order, index 1..kParameterCount.
+// Every field is also a host parameter. The host sees kHostParameterOrder, not this order.
 struct Parameters
 {
     double engineMode = 1.0;
@@ -362,7 +363,7 @@ inline const char* parameterId(int index) noexcept
     return kParameterInfo[index].id;
 }
 
-inline const char* parameterName(int index) noexcept
+inline constexpr const char* parameterName(int index) noexcept
 {
     if (index < 1 || index > kParameterCount)
         return "Unused";
@@ -384,6 +385,161 @@ inline bool parameterIsSwitch(int index) noexcept
         return false;
     return kParameterInfo[index].isSwitch;
 }
+
+// How the host should publish a parameter. A named two-position control (Core /
+// Twin, Pre / Post) is a choice, so a control surface can show the names. An
+// on/off switch is a toggle. MIDI learn still uses parameterIsSwitch.
+enum class ParameterKind
+{
+    continuous,
+    toggle,
+    choice
+};
+
+struct ChoiceList
+{
+    const char* const* names = nullptr;
+    int count = 0;
+};
+
+// Choice index 0 is parameter value 0, and so on. The lists match the panel.
+inline ChoiceList parameterChoices(int index) noexcept
+{
+    static constexpr const char* core[] = { "Core", "Twin" };
+    static constexpr const char* delay[] = { "Off", "Tape Echo", "Reverse" };
+    static constexpr const char* place[] = { "Pre", "Post" };
+    static constexpr const char* reverb[] = { "Off", "Abyss", "Shimmer", "Spring" };
+    static constexpr const char* order[] = { "Delay First", "Reverb First" };
+    static constexpr const char* tremolo[] = { "Tube Bias", "Opto", "Harmonic", "Flutter" };
+    static constexpr const char* glide[] = { "Off", "Early Ref", "Reverse" };
+    static constexpr const char* howl[] = { "H2", "H3", "H4", "H5" };
+    static constexpr const char* image[] = { "Mono", "Stereo" };
+    static constexpr const char* pedal[] = { "Volume", "Wah" };
+
+    switch (index)
+    {
+        case 1: return { core, 2 };
+        case 37: return { delay, 3 };
+        case 41: return { place, 2 };
+        case 43: return { reverb, 4 };
+        case 47: return { place, 2 };
+        case 49: return { order, 2 };
+        case 53: return { tremolo, 4 };
+        case 59: return { glide, 3 };
+        case 61: return { place, 2 };
+        case 82: return { howl, 4 };
+        case 85: return { image, 2 };
+        case 86: return { image, 2 };
+        case 87: return { image, 2 };
+        case 88: return { image, 2 };
+        case 89: return { image, 2 };
+        case 90: return { image, 2 };
+        case 91: return { image, 2 };
+        case 92: return { image, 2 };
+        case 95: return { pedal, 2 };
+        default: return {};
+    }
+}
+
+inline ParameterKind parameterKind(int index) noexcept
+{
+    if (parameterChoices(index).count > 0)
+        return ParameterKind::choice;
+    if (parameterIsSwitch(index))
+        return ParameterKind::toggle;
+    return ParameterKind::continuous;
+}
+
+// Names the control surface shows. The editor keeps parameterName.
+inline constexpr const char* parameterHostName(int index) noexcept
+{
+    switch (index)
+    {
+        case 6: return "Blend";
+        case 11: return "Wall";
+        case 12: return "Tilt";
+        case 16: return "Dblr Level";
+        case 17: return "Polarity";
+        case 18: return "Dblr Thump";
+        case 20: return "Sus Depth";
+        case 25: return "CC Presets";
+        case 30: return "Pre Cutoff";
+        case 31: return "Split";
+        case 32: return "Body Hz";
+        case 40: return "Delay Fdbk";
+        case 41: return "Delay Place";
+        case 42: return "Delay Damp";
+        case 47: return "Verb Place";
+        case 49: return "Space Order";
+        case 51: return "Trem Speed";
+        case 52: return "Trem Depth";
+        case 53: return "Trem Shape";
+        case 54: return "Trem Width";
+        case 57: return "Oct Level";
+        case 61: return "Glide Place";
+        case 65: return "Twin Octave";
+        case 69: return "Grit Char";
+        case 71: return "Grit Freq";
+        case 75: return "Phaser Fdbk";
+        case 79: return "Baritone";
+        case 86: return "Verb Stereo";
+        case 87: return "Chor Stereo";
+        case 88: return "Phas Stereo";
+        case 89: return "Trem Stereo";
+        case 92: return "Cab Stereo";
+        case 97: return "Dblr Scoop";
+        case 98: return "Dblr Cut";
+        case 100: return "Dblr Pres";
+        default: return parameterName(index);
+    }
+}
+
+// What the host is allowed to see, in bank order. 63 leaves room for the Bypass
+// parameter JUCE adds on VST3: Live auto-maps a plugin only at 64 or fewer.
+// Everything else stays in the plugin for the panel, presets, and MIDI learn.
+inline constexpr int kHostVisibleCount = 63;
+inline constexpr int kHostParameterOrder[kHostVisibleCount] = {
+    24, 2, 3, 35, 4, 63, 20, 28,
+    21, 22, 23, 32, 33, 7, 11, 12,
+    38, 39, 40, 42, 44, 45, 46, 48,
+    51, 52, 54, 56, 60, 80, 81, 73,
+    74, 75, 76, 77, 78, 83, 84, 70,
+    1, 37, 43, 53, 59, 82, 36, 55,
+    66, 67, 62, 19, 34, 14, 50, 93,
+    41, 47, 61, 49, 95, 9, 17,
+};
+
+constexpr std::array<bool, kParameterCount + 1> makeHostVisible() noexcept
+{
+    std::array<bool, kParameterCount + 1> table {};
+    for (const int index : kHostParameterOrder)
+        table[static_cast<std::size_t>(index)] = true;
+    return table;
+}
+
+inline constexpr std::array<bool, kParameterCount + 1> kHostVisible = makeHostVisible();
+
+inline bool parameterIsHostVisible(int index) noexcept
+{
+    return index >= 1 && index <= kParameterCount
+        && kHostVisible[static_cast<std::size_t>(index)];
+}
+
+constexpr bool hostNamesFitControlSurface(int limit) noexcept
+{
+    for (int index = 1; index <= kParameterCount; ++index)
+    {
+        const char* name = parameterHostName(index);
+        int length = 0;
+        while (name[length] != '\0')
+            ++length;
+        if (length == 0 || length > limit)
+            return false;
+    }
+    return true;
+}
+
+static_assert(hostNamesFitControlSurface(12));
 
 inline double& Parameters::at(int index) noexcept
 {
@@ -456,6 +612,35 @@ inline constexpr int kControllerModeParameter = 25;
 inline constexpr int kPresetSlotParameter = 26;
 inline constexpr int kPresetCcParameter = 27;
 inline constexpr int kFreezeParameter = 66;
+
+// Controller mode, the preset mirror, and the preset CC are project state.
+// A control surface skips anything that is not automatable.
+inline constexpr bool parameterIsAutomatable(int index) noexcept
+{
+    return index != kControllerModeParameter
+        && index != kPresetSlotParameter
+        && index != kPresetCcParameter;
+}
+
+constexpr bool publishedSetFitsLive() noexcept
+{
+    bool seen[kParameterCount + 1] = {};
+    for (const int index : kHostParameterOrder)
+    {
+        if (index < 1 || index > kParameterCount || seen[index])
+            return false;
+        if (!parameterIsAutomatable(index))
+            return false;
+        seen[index] = true;
+    }
+    int count = 0;
+    for (int index = 1; index <= kParameterCount; ++index)
+        if (seen[index])
+            ++count;
+    return count == kHostVisibleCount && kHostVisibleCount <= 63;
+}
+
+static_assert(publishedSetFitsLive());
 
 inline constexpr int kFactoryPresetCount = 33;
 inline constexpr int kPresetSlots = 128;

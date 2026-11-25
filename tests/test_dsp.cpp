@@ -1112,6 +1112,32 @@ TEST_CASE("the parameter table is stable and self-consistent", "[preset]")
     REQUIRE(std::string(doomgazer::parameterId(96)) == "twinLevel");
     REQUIRE(std::string(doomgazer::parameterId(100)) == "doublerPresence");
     REQUIRE(std::string(doomgazer::parameterName(24)) == "Master");
+    REQUIRE(std::string(doomgazer::parameterHostName(24)) == "Master");
+    REQUIRE(std::string(doomgazer::parameterHostName(65)) == "Twin Octave");
+    REQUIRE(doomgazer::parameterKind(1) == doomgazer::ParameterKind::choice);
+    REQUIRE(doomgazer::parameterKind(36) == doomgazer::ParameterKind::toggle);
+    REQUIRE(doomgazer::parameterKind(24) == doomgazer::ParameterKind::continuous);
+    REQUIRE_FALSE(doomgazer::parameterIsAutomatable(25));
+    REQUIRE_FALSE(doomgazer::parameterIsAutomatable(26));
+    REQUIRE_FALSE(doomgazer::parameterIsAutomatable(27));
+    REQUIRE(doomgazer::parameterIsAutomatable(24));
+
+    const doomgazer::ChoiceList delay = doomgazer::parameterChoices(37);
+    REQUIRE(delay.count == 3);
+    REQUIRE(std::string(delay.names[0]) == "Off");
+    REQUIRE(std::string(delay.names[1]) == "Tape Echo");
+    REQUIRE(std::string(delay.names[2]) == "Reverse");
+    const doomgazer::ChoiceList reverb = doomgazer::parameterChoices(43);
+    REQUIRE(reverb.count == 4);
+    REQUIRE(std::string(reverb.names[1]) == "Abyss");
+    const doomgazer::ChoiceList shape = doomgazer::parameterChoices(53);
+    REQUIRE(shape.count == 4);
+    REQUIRE(std::string(shape.names[0]) == "Tube Bias");
+    const doomgazer::ChoiceList glide = doomgazer::parameterChoices(59);
+    REQUIRE(glide.count == 3);
+    const doomgazer::ChoiceList howl = doomgazer::parameterChoices(82);
+    REQUIRE(howl.count == 4);
+    REQUIRE(std::string(howl.names[0]) == "H2");
 
     for (int index = 1; index <= doomgazer::kParameterCount; ++index)
     {
@@ -1125,6 +1151,17 @@ TEST_CASE("the parameter table is stable and self-consistent", "[preset]")
             REQUIRE(range.min == 0.0);
             REQUIRE(range.max == 1.0);
             REQUIRE(range.step == 1.0);
+        }
+        const doomgazer::ChoiceList choices = doomgazer::parameterChoices(index);
+        if (doomgazer::parameterKind(index) == doomgazer::ParameterKind::choice)
+        {
+            const int span = static_cast<int>(std::lround((range.max - range.min) / range.step)) + 1;
+            REQUIRE(choices.count == span);
+            REQUIRE(choices.names != nullptr);
+        }
+        else
+        {
+            REQUIRE(choices.count == 0);
         }
     }
 }
